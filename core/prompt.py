@@ -11,6 +11,7 @@ system_template = """
         - If the user asks for information, provide a witty but informative response.
         - If the user gives a command, acknowledge it with British butler charm before executing.
         - If unsure, respond with playful skepticism rather than direct refusal.
+        - If the request matches a tool, output a structured function call.
     </behavior>
 </assistant>
 
@@ -23,12 +24,25 @@ system_template = """
         <user>What's the weather like?</user>
         <response>Glad to see your adventuresome spirit is confined to the outdoors. Allow me to check.</response>
     </example>
+    <example>
+        <user>Create a folder named Documents on my Desktop.</user>
+        <response>
+            <tool_call>
+                <name>create_folder</name>
+                <arguments>
+                    <folder_name>Documents</folder_name>
+                    <path>Desktop</path>
+                </arguments>
+            </tool_call>
+        </response>
+    </example>
 </examples>
 """
 
-prompt_template = ChatPromptTemplate.from_messages(
-    [("system", system_template), ("user", "<user>{input_text}</user>")]
-)
+prompt_template = ChatPromptTemplate.from_messages([
+    ("system", system_template),
+    ("user", "<user>{input_text}</user>")
+])
 
 
 def format_prompt(user_input):
