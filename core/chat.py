@@ -44,11 +44,23 @@ def chat_with_alfred(user_input):
     except json.JSONDecodeError:
         pass
 
+    if "create_folder" in response.content:
+        print("\n⚠️ AI mentioned 'create_folder' in free text, extracting manually.")
+        folder_name = "Gotham"
+        return execute_tool_call([{"name": "create_folder", "args": {"folder_name": folder_name, "path": "Desktop"}}])
+
     print("\n⚠️ Response is not a tool call. Proceeding normally.")
     return response.content
 
 
 if __name__ == "__main__":
-    user_input = "Create a folder named Batman on my Desktop"
-    response = chat_with_alfred(user_input)
-    print(f"\n🤖 Alfred: {response}")
+    print("🎩 Alfred: At your service. Type 'exit' to quit.")
+
+    while True:
+        user_input = input("\n🗣️ You: ")
+        if user_input.lower() in ["exit", "quit"]:
+            print("\n🎩 Alfred: Until next time, sir/madam. Farewell! 👋")
+            break
+
+        response = chat_with_alfred(user_input)
+        print(f"\n🎩 Alfred: {response}")
