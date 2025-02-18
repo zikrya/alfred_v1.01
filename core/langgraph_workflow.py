@@ -18,6 +18,7 @@ def call_ai(state: State):
 
     state["messages"].append(response)  # ✅ Store AI response in state
 
+    # ✅ Ensure AI correctly identifies tool calls before proceeding
     if hasattr(response, "tool_calls") and response.tool_calls:
         return {"messages": state["messages"], "next_step": "tools"}
 
@@ -51,8 +52,11 @@ def execute_tools(state: State):
 
 def determine_next_step(state: State):
     """Returns the correct next step based on AI response."""
-    if hasattr(state["messages"][-1], "tool_calls") and state["messages"][-1].tool_calls:
+    latest_message = state["messages"][-1]
+
+    if hasattr(latest_message, "tool_calls") and latest_message.tool_calls:
         return "tools"
+
     return END
 
 
@@ -62,13 +66,13 @@ graph.add_node("ai", call_ai)
 graph.add_node("tools", execute_tools)
 
 graph.add_edge(START, "ai")
-# ✅ Fix: Use function reference
-graph.add_conditional_edges("ai", determine_next_step)
+graph.add_conditional_edges("ai", determine_next_step)  # ✅ Conditional routing
 graph.add_edge("tools", "ai")
 
 graph = graph.compile()
 
+
 if __name__ == "__main__":
-    test_input = "Where the file Batman.txt located?"
+    test_input = "Where is the file Batman.txt located?"
     response = graph.invoke({"messages": [HumanMessage(content=test_input)]})
     print("\n🎩 Alfred: ", response["messages"][-1].content)
