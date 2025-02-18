@@ -1,5 +1,6 @@
+import json
 from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from core.ai import model_with_tools
 from core.tool_execution import execute_tool_call
 
@@ -11,57 +12,63 @@ class State(dict):
 
 def call_ai(state: State):
     """Invoke AI model and determine next step."""
-    response = model_with_tools.invoke(state["messages"])
-    state["messages"].append(response)
+    messages = state["messages"]  # ✅ Extract list of messages
+    # ✅ Pass correctly formatted messages
+    response = model_with_tools.invoke(messages)
 
-    return {"messages": state["messages"]}
+    state["messages"].append(response)  # ✅ Store AI response in state
+
+    if hasattr(response, "tool_calls") and response.tool_calls:
+        return {"messages": state["messages"], "next_step": "tools"}
+
+    return {"messages": state["messages"], "next_step": END}
 
 
 def execute_tools(state: State):
-    """Execute tools and append results as ToolMessage with tool_call_id."""
-    last_message = state["messages"][-1]
+    """Execute tools and append properly formatted responses."""
+    latest_ai_message = state["messages"][-1]
 
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        for tool_call in last_message.tool_calls:
-            tool_name = tool_call["name"]
-            tool_args = tool_call["args"]
-            tool_call_id = tool_call["id"]
+    if hasattr(latest_ai_message, "tool_calls") and latest_ai_message.tool_calls:
+        print(f"\n🔧 Executing tool: {latest_ai_message.tool_calls}")
 
-            print(f"\n🔧 Executing tool: {tool_name} with args {tool_args}")
-            tool_response = execute_tool_call(
-                [{"name": tool_name, "args": tool_args}])
+        tool_responses = execute_tool_call(latest_ai_message.tool_calls)
 
-            state["messages"].append(
-                ToolMessage(content=str(tool_response),
-                            tool_call_id=tool_call_id)
+        # ✅ Ensure tool responses are correctly mapped to `tool_call_id`
+        tool_messages = [
+            ToolMessage(
+                # ✅ Wrap response in JSON object
+                content=json.dumps({"result": resp}),
+                # ✅ Associate with correct tool call ID
+                tool_call_id=call["id"]
             )
+            for call, resp in zip(latest_ai_message.tool_calls, tool_responses)
+        ]
 
-    return {"messages": state["messages"]}
+        return {"messages": state["messages"] + tool_messages, "next_step": "ai"}
 
-
-graph = StateGraph(State)
-graph.add_node("ai", call_ai)
-graph.add_node("tools", execute_tools)
+    return {"messages": state["messages"], "next_step": END}
 
 
 def determine_next_step(state: State):
-    last_message = state["messages"][-1]
-
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+    """Returns the correct next step based on AI response."""
+    if hasattr(state["messages"][-1], "tool_calls") and state["messages"][-1].tool_calls:
         return "tools"
     return END
 
 
+# ✅ Define and compile the LangGraph workflow correctly
+graph = StateGraph(State)
+graph.add_node("ai", call_ai)
+graph.add_node("tools", execute_tools)
+
 graph.add_edge(START, "ai")
-graph.add_conditional_edges("ai", determine_next_step, {
-                            "tools": "tools", END: END})
+# ✅ Fix: Use function reference
+graph.add_conditional_edges("ai", determine_next_step)
 graph.add_edge("tools", "ai")
 
 graph = graph.compile()
 
-
 if __name__ == "__main__":
-    test_input = "Create a folder named 'TestLangGraph' on my Desktop."
+    test_input = "Where the file Batman.txt located?"
     response = graph.invoke({"messages": [HumanMessage(content=test_input)]})
-
     print("\n🎩 Alfred: ", response["messages"][-1].content)

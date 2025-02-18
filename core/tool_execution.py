@@ -1,7 +1,6 @@
 import sys
 import os
 import json
-from langchain_core.messages import ToolMessage
 from core.command_handler import get_tool_function
 
 sys.path.insert(0, os.path.abspath(
@@ -33,27 +32,26 @@ def validate_tool_call(tool_name, args):
 
     if missing_args:
         print(
-            f" Error: Missing required arguments {missing_args} for '{tool_name}'")
+            f"⚠️ Error: Missing required arguments {missing_args} for '{tool_name}'")
         return False
     if extra_args:
         print(
-            f" Warning: Extra arguments {extra_args} provided to '{tool_name}'")
+            f"⚠️ Warning: Extra arguments {extra_args} provided to '{tool_name}'")
 
     return True
 
 
 def execute_tool_call(tool_calls):
     """Processes AI responses and executes tool calls after validation."""
-    print(f"\n Received tool calls: {tool_calls}")
+    print(f"\n  Received tool calls: {tool_calls}")
 
-    tool_messages = []
-
+    results = []
     for tool_call in tool_calls:
         try:
             tool_name = tool_call["name"]
             raw_args = tool_call["args"]
 
-            print(f"\n Raw tool arguments (string): {raw_args}")
+            print(f"\n📜 Raw tool arguments (string): {raw_args}")
 
             args = json.loads(json.dumps(raw_args))
 
@@ -64,7 +62,7 @@ def execute_tool_call(tool_calls):
 
             if not validate_tool_call(tool_name, args):
                 print(
-                    f"\n Tool call validation failed: {tool_name} not executed.")
+                    f"\n❌ Tool call validation failed: {tool_name} not executed.")
                 continue
 
             print(f"\n Running tool: {tool_name} with args {args}")
@@ -72,16 +70,14 @@ def execute_tool_call(tool_calls):
             tool_function = get_tool_function(tool_name)
             if tool_function:
                 result = tool_function.invoke(args)
-                print(f"\nTool Execution Result: {result}")
-                tool_messages.append(ToolMessage(
-                    tool_call_id=tool_call.get("id", tool_name),
-                    name=tool_name,
-                    content=result
-                ))
+                print(f"\n✅ Tool Execution Result: {result}")
+                # ✅ Return structured data
+                results.append({"tool": tool_name, "result": result})
             else:
-                print(f"\n Tool function '{tool_name}' not found!")
+                print(f"\n❌ Tool function '{tool_name}' not found!")
 
         except Exception as e:
-            print(f"\n Error processing tool call: {e}")
+            print(f"\n❌ Error processing tool call: {e}")
+            results.append({"tool": tool_name, "error": str(e)})
 
-    return {"messages": tool_messages}
+    return results  # ✅ Now returns structured results
