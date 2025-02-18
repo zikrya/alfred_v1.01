@@ -10,10 +10,18 @@ from langchain_core.tools import StructuredTool, tool
 from langchain_core.documents import Document
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import OpenAIEmbeddings
+from dotenv import load_dotenv
 
+load_dotenv()
 
-### 📌 TOOL REGISTRATION & VECTOR STORE ###
-embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+api_key = os.getenv("OPENAI_API_KEY")
+
+if not api_key:
+    raise ValueError("❌ Error: OPENAI_API_KEY is not set in .env!")
+
+embeddings = OpenAIEmbeddings(
+    openai_api_key=api_key, model="text-embedding-3-large"
+)
 
 
 def create_tool(name: str, description: str, func):
@@ -22,7 +30,6 @@ def create_tool(name: str, description: str, func):
     return StructuredTool.from_function(func, name=formatted_name, description=description)
 
 
-# Initialize Tool Registry
 TOOL_REGISTRY = {}
 
 
@@ -32,16 +39,14 @@ def register_tool(name: str, description: str, func):
     TOOL_REGISTRY[tool_id] = create_tool(name, description, func)
     return tool_id
 
-# Function to get tool registry
-
 
 def get_tool_registry():
+    """Returns the tool registry."""
     return TOOL_REGISTRY
-
-# Function to initialize vector store for tool retrieval
 
 
 def initialize_vector_store():
+    """Initializes a vector store with tool descriptions."""
     tool_documents = [
         Document(page_content=tool.description, id=tool_id,
                  metadata={"tool_name": tool.name})
@@ -54,10 +59,9 @@ def initialize_vector_store():
     return vector_store
 
 
-VECTOR_STORE = None  # Initialize lazily
+VECTOR_STORE = None
 
 
-### 📌 SYSTEM COMMAND TOOLS ###
 @tool
 def resolve_path(path: str) -> str:
     """Resolves a user-provided path to its absolute system path."""
@@ -99,8 +103,8 @@ def create_file(file_name: str, path: str = ".") -> str:
         return f"Error creating file '{file_name}': {e}"
 
 
-register_tool(
-    "Create File", "Creates a new file at a given path.", create_file)
+register_tool("Create File",
+              "Creates a new file at a given path.", create_file)
 
 
 @tool
@@ -166,7 +170,6 @@ register_tool("Append to File",
               "Appends content to a specified file.", append_to_file)
 
 
-### 📌 FILE SEARCH & EXECUTION TOOLS ###
 @tool
 def search_for_file(filename: str, search_path: str = "/") -> str:
     """Searches for a specific file in the given directory."""
@@ -186,6 +189,21 @@ def search_for_folder(foldername: str, search_path: str = "/") -> str:
 
 register_tool("Search for Folder",
               "Finds a folder in a given directory.", search_for_folder)
+
+
+@tool
+def search_and_append_to_file(file_name: str, content: str, search_path: str = "/") -> str:
+    """Searches for a file and appends content to it if found."""
+    file_path = search_for_file(file_name, search_path)
+
+    if isinstance(file_path, str) and "found" in file_path:
+        return append_to_file(file_path.split(": ")[1], content)
+    else:
+        return f"File '{file_name}' not found in the search path."
+
+
+register_tool("Search and Append to File",
+              "Searches for a file and appends content to it.", search_and_append_to_file)
 
 
 @tool
@@ -220,39 +238,22 @@ register_tool("Open File or Folder",
               "Opens a file or folder in the system.", open_file_or_folder)
 
 
-### 📌 HELPER FUNCTIONS ###
+### HELPER FUNCTIONS ###
 def search_target_scandir(path, target_name):
     """Scans a directory for a file or folder and returns its path if found."""
     try:
         with os.scandir(path) as entries:
-            subdirs = []
             for entry in entries:
-                if (entry.is_file() or entry.is_dir()) and entry.name == target_name:
+                if entry.name == target_name:
                     return entry.path
-                elif entry.is_dir(follow_symlinks=False):
-                    subdirs.append(entry.path)
-            return subdirs
+            return []
     except (PermissionError, OSError):
         return []
 
 
 def search_target_parallel(root_directory, target_name, max_workers=8):
-    """Searches for a file or folder in a directory and its subdirectories using parallel processing."""
+    """Searches for a file or folder in a directory using parallel processing."""
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(
             search_target_scandir, root_directory, target_name)]
-        found_target = None
-
-        while futures:
-            future = futures.pop(0)
-            subdirs = future.result()
-
-            if isinstance(subdirs, str):
-                found_target = subdirs
-                break
-            else:
-                for subdir in subdirs:
-                    futures.append(executor.submit(
-                        search_target_scandir, subdir, target_name))
-
-        return f"Target found: {found_target}" if found_target else f"Target '{target_name}' not found."
+        return f"Target found: {futures.pop(0).result()}" if futures else f"Target '{target_name}' not found."
