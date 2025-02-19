@@ -4,6 +4,7 @@ from langchain_core.documents import Document
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import OpenAIEmbeddings
 from dotenv import load_dotenv
+from core.tools import get_tool_registry
 
 load_dotenv()
 
@@ -18,22 +19,27 @@ embeddings = OpenAIEmbeddings(
 
 vectorstore = InMemoryVectorStore(embedding=embeddings)
 
-test_documents = [
-    Document(page_content="Test document 1", metadata={"source": "test1"}),
-    Document(page_content="Test document 2", metadata={"source": "test2"}),
-    Document(page_content="LangGraph is useful for AI workflows",
-             metadata={"source": "test3"}),
+tool_registry = get_tool_registry()
+tool_documents = [
+    Document(
+        page_content=tool.description,
+        metadata={"tool_name": tool.name}
+    )
+    for tool in tool_registry.values()
 ]
 
-for doc in test_documents:
-    print(f"📜 Document Type: {type(doc)}, Content: {doc.page_content}")
+print("\n Storing tool embeddings...")
+vectorstore.add_documents(tool_documents)
+print(" Tools successfully added to vector store!")
 
-print("\n📥 Storing embeddings...")
-vectorstore.add_documents(test_documents)
-print("✅ Documents successfully added to vector store!")
+query = "I want to add content to a specific file"
+retrieved_tools = vectorstore.similarity_search(
+    query, k=1)
 
-query = "What is LangGraph?"
-retrieved_docs = vectorstore.similarity_search(query)
-print("\n🔍 Retrieved Documents:")
-for idx, doc in enumerate(retrieved_docs, start=1):
-    print(f"{idx}. {doc.page_content} (Source: {doc.metadata['source']})")
+print("\n Best Matching Tool:")
+if retrieved_tools:
+    best_tool = retrieved_tools[0]
+    print(f" Tool Name: {best_tool.metadata['tool_name']}")
+    print(f"Description: {best_tool.page_content}")
+else:
+    print(" No relevant tool found.")

@@ -215,7 +215,7 @@ def search_and_append_to_file(file_name: str, content: str, search_path: str = "
 
 
 register_tool("Search and Append to File",
-              "Searches for a file and appends content to it.", search_and_append_to_file)
+              "Searches for a specific file and appends content to it.", search_and_append_to_file)
 
 
 @tool
