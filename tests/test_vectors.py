@@ -32,7 +32,7 @@ print("\n Storing tool embeddings...")
 vectorstore.add_documents(tool_documents)
 print(" Tools successfully added to vector store!")
 
-query = "I want to add content to a specific file"
+query = "Create a txt file called Joker"
 retrieved_tools = vectorstore.similarity_search(
     query, k=1)
 
