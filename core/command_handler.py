@@ -31,6 +31,7 @@ def get_tool_function(tool_name):
         "list_files_and_folders": list_files_and_folders,  # ✅ Added here
     }
 
+    tool_name = tool_name.lower()  # ✅ Convert AI's tool name to lowercase
     function = tool_mapping.get(tool_name)
     print(
         f"\n get_tool_function() - Looking for: {tool_name}, Found: {function}")

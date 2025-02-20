@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.abspath(
 
 
 def fix_ai_path(path):
-    """Fixes AI's incorrect path mapping."""
+    """Fixes AI's incorrect path mapping to absolute paths."""
     if path.lower() in ["desktop", "/desktop"]:
         return os.path.join(os.path.expanduser("~"), "Desktop")
     elif path.lower() in ["documents", "/documents"]:
@@ -36,27 +36,41 @@ def validate_tool_call(tool_name, args):
         return False
     if extra_args:
         print(
-            f" Warning: Extra arguments {extra_args} provided to '{tool_name}'")
+            f"⚠️ Warning: Extra arguments {extra_args} provided to '{tool_name}'")
 
     return True
 
 
 def execute_tool_call(tool_calls):
     """Processes AI responses and executes tool calls after validation."""
-    print(f"\n  Received tool calls: {tool_calls}")
+    print(f"\n🔧 Received tool calls: {json.dumps(tool_calls, indent=2)}")
 
     results = []
     for tool_call in tool_calls:
         try:
-            tool_name = tool_call["name"]
+            tool_name = tool_call["name"].lower()
             raw_args = tool_call["args"]
 
-            print(f"\n Raw tool arguments (string): {raw_args}")
+            print(f"\n📜 Raw tool arguments: {raw_args}")
 
-            args = json.loads(json.dumps(raw_args))
-
-            if "path" in args:
-                args["path"] = fix_ai_path(args["path"])
+            args = {}
+            if tool_name == "create_folder":
+                folder_path = raw_args.get("param", "")
+                abs_path = fix_ai_path(folder_path)
+                args["folder_name"] = os.path.basename(
+                    abs_path)
+                args["path"] = os.path.dirname(
+                    abs_path)
+            elif tool_name == "create_file":
+                file_path = raw_args.get("param", "")
+                abs_path = fix_ai_path(file_path)
+                args["file_name"] = os.path.basename(abs_path)
+                args["path"] = os.path.dirname(abs_path)
+            elif tool_name == "resolve_path":
+                args["path"] = fix_ai_path(raw_args.get(
+                    "param", ""))
+            else:
+                args = raw_args
 
             print(f"\n Validating tool call: {tool_name} with args {args}")
 
