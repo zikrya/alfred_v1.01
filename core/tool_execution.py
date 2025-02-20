@@ -48,49 +48,36 @@ def execute_tool_call(tool_calls):
     results = []
     for tool_call in tool_calls:
         try:
-            tool_name = tool_call["name"].lower()
+            tool_name = tool_call["name"]
             raw_args = tool_call["args"]
 
             print(f"\n📜 Raw tool arguments: {raw_args}")
 
-            args = {}
-            if tool_name == "create_folder":
-                folder_path = raw_args.get("param", "")
-                abs_path = fix_ai_path(folder_path)
-                args["folder_name"] = os.path.basename(
-                    abs_path)
-                args["path"] = os.path.dirname(
-                    abs_path)
-            elif tool_name == "create_file":
-                file_path = raw_args.get("param", "")
-                abs_path = fix_ai_path(file_path)
-                args["file_name"] = os.path.basename(abs_path)
-                args["path"] = os.path.dirname(abs_path)
-            elif tool_name == "resolve_path":
-                args["path"] = fix_ai_path(raw_args.get(
-                    "param", ""))
+            # 🔥 FIX AI-GENERATED ARGUMENTS BEFORE EXECUTION
+            if tool_name == "Search_for_Folder":
+                args = {"search_path": raw_args.get("param", "/")}
             else:
-                args = raw_args
+                args = raw_args  # Default case
 
-            print(f"\n Validating tool call: {tool_name} with args {args}")
+            print(f"\n🔍 Validating tool call: {tool_name} with args {args}")
 
             if not validate_tool_call(tool_name, args):
                 print(
-                    f"\n Tool call validation failed: {tool_name} not executed.")
+                    f"\n❌ Tool call validation failed: {tool_name} not executed.")
                 continue
 
-            print(f"\n Running tool: {tool_name} with args {args}")
+            print(f"\n🚀 Running tool: {tool_name} with args {args}")
 
             tool_function = get_tool_function(tool_name)
             if tool_function:
                 result = tool_function.invoke(args)
-                print(f"\n Tool Execution Result: {result}")
+                print(f"\n✅ Tool Execution Result: {result}")
                 results.append({"tool": tool_name, "result": result})
             else:
-                print(f"\n Tool function '{tool_name}' not found!")
+                print(f"\n❌ Tool function '{tool_name}' not found!")
 
         except Exception as e:
-            print(f"\n Error processing tool call: {e}")
+            print(f"\n❌ Error processing tool call: {e}")
             results.append({"tool": tool_name, "error": str(e)})
 
-    return results
+    return results  # ✅ Now returns structured results

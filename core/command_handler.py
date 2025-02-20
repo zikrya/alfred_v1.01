@@ -4,12 +4,9 @@ from core.tools import (
     open_file_or_folder,
     append_to_file,
     read_file_content,
-    search_for_file,
-    search_for_folder,
     search_and_append_to_file,
     resolve_path,
-    search_target_scandir,
-    search_target_parallel,
+    search_for_target,
     list_files_and_folders
 )
 
@@ -22,12 +19,9 @@ def get_tool_function(tool_name):
         "open_file_or_folder": open_file_or_folder,
         "append_to_file": append_to_file,
         "read_file_content": read_file_content,
-        "search_for_file": search_for_file,
-        "search_for_folder": search_for_folder,
+        "search_for_target": search_for_target,
         "search_and_append_to_file": search_and_append_to_file,
         "resolve_path": resolve_path,
-        "search_target_scandir": search_target_scandir,
-        "search_target_parallel": search_target_parallel,
         "list_files_and_folders": list_files_and_folders,  # ✅ Added here
     }
 

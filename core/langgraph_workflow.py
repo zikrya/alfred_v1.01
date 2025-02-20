@@ -64,6 +64,6 @@ graph.add_edge("tools", "ai")
 graph = graph.compile()
 
 if __name__ == "__main__":
-    test_input = "Create a folder named Batman on my Desktop"
+    test_input = "Where is my Batman folder located"
     response = graph.invoke({"messages": [HumanMessage(content=test_input)]})
     print("\n🎩 Alfred: ", response["messages"][-1].content)

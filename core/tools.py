@@ -6,6 +6,7 @@ import uuid
 import PyPDF2
 import docx
 from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import Pool, Manager, cpu_count
 from langchain_core.tools import StructuredTool, tool
 from langchain_core.documents import Document
 from langchain_core.vectorstores import InMemoryVectorStore
@@ -26,6 +27,11 @@ if not api_key:
 embeddings = OpenAIEmbeddings(
     openai_api_key=api_key, model="text-embedding-3-large"
 )
+
+EXCLUDED_FOLDERS = {
+    "node_modules", ".git", ".venv", "venv", "__pycache__", ".DS_Store",
+    "Library", "System", "Applications", "usr", "bin", "opt", "var", ".Trash"
+}
 
 
 class ToolArgs(BaseModel):
@@ -183,33 +189,53 @@ register_tool("Append to File",
 
 
 @tool
-def search_for_file(filename: str, search_path: str = "/") -> str:
-    """Searches for a specific file in the given directory."""
-    result = search_target_parallel(search_path, filename)
-    return result.split(": ")[1].strip() if "Target found:" in result else f"File '{filename}' not found."
+def search_for_target(target_name: str, search_path: str = None) -> list:
+    """Searches for a file or folder in parallel across all directories."""
+    if search_path is None:
+        search_path = os.path.expanduser("~")
+
+    max_workers = cpu_count()
+    manager = Manager()
+    queue = manager.Queue()
+    queue.put(search_path)
+    found_paths = manager.list()
+
+    with Pool(processes=max_workers) as pool:
+        while not queue.empty():
+            tasks = []
+            for _ in range(min(queue.qsize(), max_workers)):
+                current_dir = queue.get()
+                tasks.append(pool.apply_async(
+                    search_directory, (current_dir, target_name)))
+
+            for task in tasks:
+                result, new_dirs = task.get()
+                if result:
+                    found_paths.extend(result)
+                for new_dir in new_dirs:
+                    if should_exclude(new_dir):
+                        continue
+                    queue.put(new_dir)
+
+    return list(found_paths) if found_paths else []
 
 
-register_tool("Search for File",
-              "Finds a file in a given directory.", search_for_file)
+register_tool("Search for Target",
+              "Searches for a file or folder in a given directory.", search_for_target)
 
 
 @tool
-def search_for_folder(foldername: str, search_path: str = "/") -> str:
-    """Searches for a specific folder within a directory."""
-    return search_target_parallel(search_path, foldername)
-
-
-register_tool("Search for Folder",
-              "Finds a folder in a given directory.", search_for_folder)
-
-
-@tool
-def search_and_append_to_file(file_name: str, content: str, search_path: str = "/") -> str:
+def search_and_append_to_file(file_name: str, content: str, search_path: str = None) -> str:
     """Searches for a file and appends content to it if found."""
-    file_path = search_for_file(file_name, search_path)
+    if search_path is None:
+        search_path = os.path.expanduser("~")  # Default to home directory
 
-    if isinstance(file_path, str) and "found" in file_path:
-        return append_to_file(file_path.split(": ")[1], content)
+    found_files = search_for_target(file_name, search_path, is_file=True)
+
+    if len(found_files) == 1:
+        return append_to_file(found_files[0], content)
+    elif len(found_files) > 1:
+        return f"Multiple files found:\n" + "\n".join(found_files)
     else:
         return f"File '{file_name}' not found in the search path."
 
@@ -219,31 +245,34 @@ register_tool("Search and Append to File",
 
 
 @tool
-def open_file_or_folder(target_name: str, search_path: str = "/") -> str:
-    """Opens a file or folder if found in the given search path."""
-    file_path = search_for_file(target_name, search_path)
-    folder_path = search_for_folder(target_name, search_path)
+def open_file_or_folder(target_name: str, search_path: str = None) -> str:
+    """Searches for and opens a file or folder if found."""
+    if search_path is None:
+        search_path = os.path.expanduser("~")
 
-    if isinstance(file_path, str) and os.path.exists(file_path):
-        path = file_path
-    elif isinstance(folder_path, str) and os.path.exists(folder_path):
-        path = folder_path
-    else:
+    found_targets = search_for_target(target_name, search_path)
+
+    if not found_targets:
         return f"'{target_name}' not found."
+
+    if len(found_targets) > 1:
+        return f"Multiple matches found:\n" + "\n".join(found_targets)
+
+    target_path = found_targets[0]
 
     try:
         system = platform.system()
         if system == "Windows":
-            subprocess.run(["start", path], shell=True)
+            subprocess.run(["start", target_path], shell=True)
         elif system == "Darwin":
-            subprocess.run(["open", path])
+            subprocess.run(["open", target_path])
         elif system == "Linux":
-            subprocess.run(["xdg-open", path])
+            subprocess.run(["xdg-open", target_path])
         else:
             return "Unsupported operating system."
-        return f"'{target_name}' opened successfully."
+        return f" '{target_name}' opened successfully: {target_path}"
     except Exception as e:
-        return f"Error opening '{target_name}': {e}"
+        return f" Error opening '{target_name}': {e}"
 
 
 register_tool("Open File or Folder",
@@ -251,21 +280,28 @@ register_tool("Open File or Folder",
 
 
 ### HELPER FUNCTIONS ###
-def search_target_scandir(path, target_name):
-    """Scans a directory for a file or folder and returns its path if found."""
+def should_exclude(path):
+    """Checks if a directory should be skipped to speed up search."""
+    return any(excluded in path.split(os.sep) for excluded in EXCLUDED_FOLDERS)
+
+
+def search_directory(path, target_name):
+    """Scans a directory for a file or folder and returns new directories to search."""
+    if should_exclude(path):
+        return [], []
+
+    found_paths = []
+    subdirectories = []
+
     try:
         with os.scandir(path) as entries:
             for entry in entries:
                 if entry.name == target_name:
-                    return entry.path
-            return []
+                    found_paths.append(entry.path)
+                elif entry.is_dir(follow_symlinks=False):
+                    subdirectories.append(entry.path)
+
     except (PermissionError, OSError):
-        return []
+        pass
 
-
-def search_target_parallel(root_directory, target_name, max_workers=8):
-    """Searches for a file or folder in a directory using parallel processing."""
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(
-            search_target_scandir, root_directory, target_name)]
-        return f"Target found: {futures.pop(0).result()}" if futures else f"Target '{target_name}' not found."
+    return found_paths, subdirectories
